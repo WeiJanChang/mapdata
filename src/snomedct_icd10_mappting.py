@@ -8,6 +8,7 @@ PyMedTermino2 is integrated with Owlready2, and store medical terminologies as O
 from owlready2.pymedtermino2.umls import *
 from pathlib import Path
 from typing import Union, List
+import pandas as pd
 
 PathLike = Union[Path | str]
 
@@ -46,6 +47,38 @@ def open_db(path_sqldb: PathLike):
     return owlready2, med_ontology
 
 
+def get_hierarchy(keywords: str, ancestor: bool = True, descendant: bool = True,
+                  output_path: PathLike = None) -> pd.DataFrame:
+    # todo: create hierarchy plot for visualisation
+    """
+    Using Keywords to search SNOMED-CT concept with all hierarchy
+    Both methods ("ancestor_concepts()" and "descendant_concepts()") remove duplicates automatically.
+    :param keywords: keywords you interest in (e.g., breast cancer)
+    :param ancestor: concept of all ancestor includes itself, otherwise, setting include_self = False
+    :param descendant: concept of all descendant includes itself, otherwise, setting include_self = False
+    :param output_path:
+    :return: all hierarchy dataframe
+    """
+    ancestor_list = []
+    descendant_list = []
+    if ancestor:
+        for concept in snomedct.search(keywords):
+            parents = concept.ancestor_concepts(include_self=True)  # output unique code
+            ancestor_list.append(parents)
+
+    if descendant:
+        for concept in snomedct.search(keywords):
+            children = concept.descendant_concepts(include_self=True)
+            descendant_list.append(children)
+
+    all_hierarchy = pd.DataFrame(ancestor_list + descendant_list)
+
+    if output_path is not None:
+        all_hierarchy.to_csv(output_path, index=False)
+
+    return all_hierarchy
+
+
 if __name__ == '__main__':
     umls_path = '/PATH/YOUR/DIRECTORY/umls-2025AA-metathesaurus-full.zip'
     path_sqldb = '/PATH/YOUR/DIRECTORY/med_terminology.sqlite3'
@@ -53,3 +86,4 @@ if __name__ == '__main__':
     owl, med_ontology = open_db(path_sqldb)
     snomedct = med_ontology["SNOMEDCT_US"]
     icd10 = med_ontology["ICD10"]
+    get_hierarchy(keywords='breast cancer', output_path='breast_ca_snomed.csv')
