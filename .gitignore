@@ -9,7 +9,6 @@
 *.avi
 *.log
 *.pkl
-*.csv
 
 #*.dat
 # *.stimlog
