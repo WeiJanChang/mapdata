@@ -1,8 +1,7 @@
 """
-Project of SNOMED-CT and ICD10 Mapping
-
-PyMedTermino - Medical Terminologies, including SNOMED CT, ICD10, MedDRA, CUI for Python
-PyMedTermino2 is integrated with Owlready2, and store medical terminologies as OWL ontlogies. This allows relating medical terms from terminologies with user created concepts.
+Project of SNOMED-CT and ICD10 Mapping by keywords you interest in
+PyMedTermino2 is integrated with Owlready2, and store medical terminologies as OWL ontlogies.
+This allows relating medical terms from terminologies with user created concepts.
 """
 
 from owlready2.pymedtermino2.umls import *
@@ -20,7 +19,7 @@ def init_db(path_umls_data: PathLike, path_sqldb: PathLike, terminologies: List[
     please download UMLS data here: https://www.nlm.nih.gov/research/umls/licensedcontent/umlsknowledgesources.html
     only need to run this function once.
 
-    :param path_umls_data: Absolute path (do not use ~/) to the UMLS data (zip format) dir path of UMLS data. e.g.,/PATH/YOUR/DIRECTORY/umls-2025AA-metathesaurus-full.zip
+    :param path_umls_data: Absolute path (do not use ~/) to the UMLS data (zip format). e.g.,/PATH/YOUR/DIRECTORY/umls-2025AA-metathesaurus-full.zip
     :param path_sqldb: Absolute path for ontology database with database name e.g.,/PATH/YOUR/DIRECTORY/db.sqlite3
     :param terminologies: by default, terminologies includes ICD10, SNOMEDCT_US, and CUI
     """
@@ -50,7 +49,6 @@ def open_db(path_sqldb: PathLike):
 
 def get_hierarchy(keywords: str, ancestor: bool = False, descendant: bool = True,
                   output_path: PathLike = None) -> pd.DataFrame:
-    # todo: create hierarchy plot for visualisation
     """
     Using Keywords to search SNOMED-CT concept with all hierarchy
     Both methods ("ancestor_concepts()" and "descendant_concepts()") remove duplicates automatically.
@@ -89,27 +87,50 @@ def get_hierarchy(keywords: str, ancestor: bool = False, descendant: bool = True
 
     all_hierarchy = pd.DataFrame(ret)
     all_hierarchy.sort_values(by='Term', ascending=True, inplace=True)  # sort alphabetically
+    # print(all_hierarchy.to_markdown(index=False)) # for README
     if output_path is not None:
         all_hierarchy.to_csv(f'{keywords}_{output_path}', index=False)
     return all_hierarchy
 
 
-def mapping_icd10(keywords: str, map_child: bool = True, output_path: PathLike = None):
+def mapping_icd10(keywords: str, refining_term: str = None, map_child: bool = True,
+                  output_path: PathLike = None) -> pd.DataFrame:
+    """
+    Mapping SNOMED-CT to ICD10 by keywords and/or refining term
+    :param keywords: keyword
+    :param refining_term: searching for specific term
+    :param map_child: looking for terms in all descendant
+    :param output_path: output path
+    :return: df
+    """
     ret = collections.defaultdict(list)
     concepts = list(snomedct.search(keywords))
 
     if map_child:
-        seen_icd_code = set()  # remove duplicate
+        seen_code = set()  # remove duplicate
         for concept in concepts:
             for child in concept.descendant_concepts(include_self=True):
-                for code_mapping in child >> icd10:
-                    if code_mapping in seen_icd_code:
-                        continue
-                    seen_icd_code.add(code_mapping)
+                for icd in child >> icd10:
+                    key = (child.name, icd.name)
 
-                    ret['ICD10 Code'].append(code_mapping.name)
-                    ret['ICD10 Term'].append(code_mapping.label.first())
+                    if key in seen_code:
+                        continue
+                    seen_code.add(icd)
+                    ret['SNOMED-CT Code'].append(child.name)
+                    ret['SNOMED-CT Term'].append(child.label.first())
+                    ret['ICD10 Code'].append(icd.name)
+                    ret['ICD10 Term'].append(icd.label.first())
+
     snomed_icd10_report = pd.DataFrame(ret)
+    snomed_icd10_report.sort_values(by='SNOMED-CT Term', ascending=True, inplace=True)  # sort alphabetically
+
+    if refining_term is not None:
+        mask = snomed_icd10_report['SNOMED-CT Term'].apply(
+            lambda x: refining_term.lower() in str(x).lower()
+        )
+        refining_report = snomed_icd10_report[mask]
+        refining_report.to_csv(f'{refining_term}_{output_path}', index=False)
+        # print(refining_report.to_markdown(index=False)) # for README
 
     if output_path is not None:
         snomed_icd10_report.to_csv(f'{keywords}_{output_path}', index=False)
@@ -127,4 +148,4 @@ if __name__ == '__main__':
     keywords = 'breast cancer'
     all_hierarchy = get_hierarchy(keywords=keywords, ancestor=False, descendant=True,
                                   output_path='snomed.csv')
-    mapping_icd10(keywords=keywords, output_path='snomed_icd_mapping.csv')
+    mapping_icd10(keywords=keywords, refining_term='hormone receptor positive', output_path='snomed_icd_mapping.csv')
