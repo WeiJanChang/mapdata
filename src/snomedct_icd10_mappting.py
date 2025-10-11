@@ -57,7 +57,7 @@ def get_hierarchy(keywords: str, ancestor: bool = False, descendant: bool = True
     :param keywords: keywords you interest in (e.g., breast cancer)
     :param ancestor: concept of all ancestor includes itself, otherwise, setting include_self = False
     :param descendant: concept of all descendant includes itself, otherwise, setting include_self = False
-    :param output_path:
+    :param output_path: path of output file
     :return: all hierarchy dataframe
     """
     ret = collections.defaultdict(list)
@@ -89,10 +89,32 @@ def get_hierarchy(keywords: str, ancestor: bool = False, descendant: bool = True
 
     all_hierarchy = pd.DataFrame(ret)
     all_hierarchy.sort_values(by='Term', ascending=True, inplace=True)  # sort alphabetically
+    if output_path is not None:
+        all_hierarchy.to_csv(f'{keywords}_{output_path}', index=False)
+    return all_hierarchy
+
+
+def mapping_icd10(keywords: str, map_child: bool = True, output_path: PathLike = None):
+    ret = collections.defaultdict(list)
+    concepts = list(snomedct.search(keywords))
+
+    if map_child:
+        seen_icd_code = set()  # remove duplicate
+        for concept in concepts:
+            for child in concept.descendant_concepts(include_self=True):
+                for code_mapping in child >> icd10:
+                    if code_mapping in seen_icd_code:
+                        continue
+                    seen_icd_code.add(code_mapping)
+
+                    ret['ICD10 Code'].append(code_mapping.name)
+                    ret['ICD10 Term'].append(code_mapping.label.first())
+    snomed_icd10_report = pd.DataFrame(ret)
 
     if output_path is not None:
-        all_hierarchy.to_csv(output_path, index=False)
-    return all_hierarchy
+        snomed_icd10_report.to_csv(f'{keywords}_{output_path}', index=False)
+
+    return snomed_icd10_report
 
 
 if __name__ == '__main__':
@@ -102,4 +124,7 @@ if __name__ == '__main__':
     owl, med_ontology = open_db(path_sqldb)
     snomedct = med_ontology["SNOMEDCT_US"]
     icd10 = med_ontology["ICD10"]
-    get_hierarchy(keywords='breast cancer', ancestor=False, descendant=True, output_path='breast_ca_snomed.csv')
+    keywords = 'breast cancer'
+    all_hierarchy = get_hierarchy(keywords=keywords, ancestor=False, descendant=True,
+                                  output_path='snomed.csv')
+    mapping_icd10(keywords=keywords, output_path='snomed_icd_mapping.csv')
