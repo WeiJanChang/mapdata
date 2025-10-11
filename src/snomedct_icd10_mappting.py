@@ -9,6 +9,7 @@ from owlready2.pymedtermino2.umls import *
 from pathlib import Path
 from typing import Union, List
 import pandas as pd
+import collections
 
 PathLike = Union[Path | str]
 
@@ -47,7 +48,7 @@ def open_db(path_sqldb: PathLike):
     return owlready2, med_ontology
 
 
-def get_hierarchy(keywords: str, ancestor: bool = True, descendant: bool = True,
+def get_hierarchy(keywords: str, ancestor: bool = False, descendant: bool = True,
                   output_path: PathLike = None) -> pd.DataFrame:
     # todo: create hierarchy plot for visualisation
     """
@@ -59,23 +60,38 @@ def get_hierarchy(keywords: str, ancestor: bool = True, descendant: bool = True,
     :param output_path:
     :return: all hierarchy dataframe
     """
-    ancestor_list = []
-    descendant_list = []
+    ret = collections.defaultdict(list)
+    concepts = list(snomedct.search(keywords))
+
     if ancestor:
-        for concept in snomedct.search(keywords):
-            parents = concept.ancestor_concepts(include_self=True)  # output unique code
-            ancestor_list.append(parents)
+        seen_anc_code = set()  # remove duplicate
+        for concept in concepts:
+            for parents in concept.ancestor_concepts(include_self=True):
+                anc_code = parents.name
+                if anc_code in seen_anc_code:
+                    continue
+                seen_anc_code.add(anc_code)
+                ret['SNOMED-CT Code'].append(anc_code)
+                ret['Term'].append(parents.label.first())
 
     if descendant:
-        for concept in snomedct.search(keywords):
-            children = concept.descendant_concepts(include_self=True)
-            descendant_list.append(children)
+        seen_dec_code = set()  # remove duplicate
+        for concept in concepts:
+            for child in concept.descendant_concepts(include_self=True):
+                child_code = child.name
+                if child_code in seen_dec_code:
+                    continue
+                seen_dec_code.add(child_code)
+                ret['SNOMED-CT Code'].append(
+                    child_code)  # as concept includes itself, so it doesn't need to append concept name or label
+                ret['Term'].append(
+                    child.label.first())
 
-    all_hierarchy = pd.DataFrame(ancestor_list + descendant_list)
+    all_hierarchy = pd.DataFrame(ret)
+    all_hierarchy.sort_values(by='Term', ascending=True, inplace=True)  # sort alphabetically
 
     if output_path is not None:
         all_hierarchy.to_csv(output_path, index=False)
-
     return all_hierarchy
 
 
@@ -86,4 +102,4 @@ if __name__ == '__main__':
     owl, med_ontology = open_db(path_sqldb)
     snomedct = med_ontology["SNOMEDCT_US"]
     icd10 = med_ontology["ICD10"]
-    get_hierarchy(keywords='breast cancer', output_path='breast_ca_snomed.csv')
+    get_hierarchy(keywords='breast cancer', ancestor=False, descendant=True, output_path='breast_ca_snomed.csv')
